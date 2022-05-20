@@ -3,7 +3,7 @@ from ozone.api import NativeSystem
 import numpy as np
 
 import scipy.sparse as sp
-from ECM_data import T_bp, SOC_bp, tU_oc, tC_Th, tR_Th, tR_0
+from ECM_data_21700 import T_bp, SOC_bp, tU_oc, tC_Th, tR_Th, tR_0
 
 from smt.surrogate_models import RMTB
 """
@@ -29,7 +29,7 @@ class ODESystemNative(NativeSystem):
 
         # Need to have ODE shapes similar as first example
         self.num_cells = 1
-        self.Q_max = 3
+        self.Q_max = 5
 
         ###############
         # add inputs: states and parameters
@@ -61,7 +61,7 @@ class ODESystemNative(NativeSystem):
         self.A = 1
         self.T_pack = 20
         self.m_cell = 48e-3 * 2
-        self.c_cell = 0.83
+        self.c_cell = 0.83 * 10000
         # initiate the states to be zeros
         outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
         outputs['dU_Th_dt'] = np.zeros((n, self.num_cells))
@@ -101,8 +101,9 @@ class ODESystemNative(NativeSystem):
             outputs['dSoC_dt'][i] = -I_L / self.Q_max / 3600
             outputs['dU_Th_dt'][i] = (I_L - U_Th / R_Th) / C_Th
             q_val = -self.k * self.A * (T_cell - self.T_pack)
-            outputs['dT_cell_dt'][i] = (I_L**2 * (R_Th + R_0) +
-                                        q_val) / (self.m_cell * self.c_cell)
+            outputs['dT_cell_dt'][i] = (I_L**2 * (R_Th + R_0) + q_val) / (
+                self.m_cell * self.c_cell) / 1e0
+            print('dT_cell_dt', outputs['dT_cell_dt'][i])
 
     def compute_partials(self, inputs, partials):
         n = self.num_nodes
@@ -189,7 +190,7 @@ class ODESystemNative(NativeSystem):
             deri_q_val_T_cell_i = -self.k * self.A
             dT_cell_dT_cell_i = 1 / (self.m_cell * self.c_cell) * (
                 (2 * I_L * (R_Th + R_0) * PI_LpTcell + I_L**2 * dR0_dT +
-                 I_L**2 * dR_Th_dT_cell) + deri_q_val_T_cell_i)
+                 I_L**2 * dR_Th_dT_cell) + deri_q_val_T_cell_i) / 1e0
 
             # change format to diagnal flat
             dSoC_dU_Th_i = np.diagflat(dSoC_dt_dU_Th_i)
@@ -269,30 +270,24 @@ class ODESystemNative(NativeSystem):
     def _InternalResistance(self, SoC, T_cell):
         '''compute R_0 and d_ocv_dsoc, and dR0_dT (f2) SoC'''
 
-        c_a = np.array([1.14537797e-04, -8.47269461e-03, 1.93783431e-01])
-        c_k = np.array([-8.06763232e-04, 2.09558866e-01, 1.11735775e+01])
-        c_b = np.array([3.61493459e-05, -2.48840545e-03, 6.26432354e-02])
-        a = c_a[0] * T_cell**2 + c_a[1] * T_cell + c_a[2]
-        k = c_k[0] * T_cell**2 + c_k[1] * T_cell + c_k[2]
-        b = c_b[0] * T_cell**2 + c_b[1] * T_cell + c_b[2]
-        R_0 = a * np.exp(-k * SoC) + b
-        dR_Th_dSOC = (0.000114537797*T_cell**2 - 0.00847269461*T_cell + 0.193783431)*(0.000806763232*T_cell**2 - 0.209558866*T_cell - 11.1735775)*\
-            np.exp(SoC*(0.000806763232*T_cell**2 - 0.209558866*T_cell - 11.1735775))
-        dR_Th_dT_cell = SoC*(0.001813526464*T_cell - 0.209558866)*(0.000114537797*T_cell**2 - 0.00847269461*T_cell + 0.193783431)*\
-            np.exp(SoC*(0.000806763232*T_cell**2 - 0.209558866*T_cell - 11.1735775)) + 7.22986920e-5*T_cell + (0.000229075594*T_cell - 0.00847269461)*\
-                np.exp(SoC*(0.000806763232*T_cell**2 - 0.209558866*T_cell - 11.1735775)) - 0.00248840545
+        R_0, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eve(tR_0,
+                                                           T_cell,
+                                                           SoC,
+                                                           order=3,
+                                                           num_ctrl_pts=4)
+
         return R_0, dR_Th_dSOC, dR_Th_dT_cell
 
-        # '''compute R_0 and d_ocv_dsoc, and dR0_dT (f2)'''
+    # '''compute R_0 and d_ocv_dsoc, and dR0_dT (f2)'''
 
-        # sm = smt_internal_resistance()
-        # x = np.concatenate((temperature, SoC)).reshape(-1, 2, order='F')
-        # R_0 = sm.predict_values(x)
-        # # print(R_0)
+    # sm = smt_internal_resistance()
+    # x = np.concatenate((temperature, SoC)).reshape(-1, 2, order='F')
+    # R_0 = sm.predict_values(x)
+    # # print(R_0)
 
-        # dR0_dT = sm.predict_derivatives(x, 0).flatten()
-        # dR0_dSOC = sm.predict_derivatives(x, 1).flatten()
-        # return R_0, dR0_dSOC, dR0_dT
+    # dR0_dT = sm.predict_derivatives(x, 0).flatten()
+    # dR0_dSOC = sm.predict_derivatives(x, 1).flatten()
+    # return R_0, dR0_dSOC, dR0_dT
 
     def _PolarizationResistance(self, SoC, T_cell):
         '''compute R_th and d_ocv_dsoc, and d_ocv_dT_cell (f3)'''
@@ -316,9 +311,24 @@ class ODESystemNative(NativeSystem):
         return C_1, dC_1_dSoC
 
     def _I_L_minus(self, U_oc, U_Th, R_0, P_batt_i):
-        '''compute C_th and dC_1_dSoC (f4)'''
-        return ((U_oc - U_Th) - np.sqrt(
-            (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i + 1e4)) / (2 * R_0)
+        if (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i > 0:
+            I_L_minus = ((U_oc - U_Th) - np.sqrt(
+                (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i)) / (2 * R_0)
+        else:
+            print('no solution!!!!!!!!!!!!!!')
+            print('(U_oc - U_Th)**2!!!!!!!!!!!!!!', (U_oc - U_Th)**2)
+            print('R_0!!!!!!!!!!!!!!', R_0)
+            print('P_batt_i!!!!!!!!!!!!!!', P_batt_i)
+            print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)
+            I_L_minus = ((U_oc - U_Th)) / (2 * R_0)
+        return I_L_minus
+
+        print("I_L_minus", I_L_minus)
+        print("U_oc", U_oc)
+        print("U_Th", U_Th)
+        print("R_0", R_0)
+        print("P_batt_i", P_batt_i)
+        return I_L_minus
 
     def _predict_eve(self,
                      y,
@@ -333,10 +343,12 @@ class ODESystemNative(NativeSystem):
         xt_eve: evaluation set for temperature
         xs_eve: evaluation set for soc
         '''
-        x_T = np.tile(T_bp, 31).reshape(-1, 4).T.flatten()
-        x_S0C = np.tile(SOC_bp, 4)
+        x_T = np.tile(T_bp, SOC_bp.shape[1]).reshape(-1, 4).T.flatten()
+        x_S0C = SOC_bp.T.flatten()
+        # print('x_T', x_T.shape)
+        # print('x_S0C', x_S0C.shape)
         x = np.concatenate((x_T, x_S0C)).reshape(-1, 2, order='F')
-        xlimits = np.array([[-100, 110.0], [-1, 1.20]])
+        xlimits = np.array([[-50, 60.0], [0., 1.000000001]])
         sm = RMTB(
             xlimits=xlimits,
             order=order,
@@ -345,17 +357,18 @@ class ODESystemNative(NativeSystem):
             regularization_weight=regularization_weight,
             print_global=False,
         )
+        # print('x', x.shape)
+        # print('y', y.shape)
         sm.set_training_values(x, y.flatten())
         sm.train()
-        # print('x_eve', xt_eve)
-        # print('x_eve', xs_eve)
+
         if xs_eve.size != 1:
             x_eve = np.concatenate((xt_eve, xs_eve)).reshape(-1, 2, order='F')
         else:
-            # print('size=1______________', np.array([xt_eve, xs_eve]))
             x_eve = np.array([xt_eve, xs_eve]).reshape(-1, 2)
+        # print()
+        # print('x_eve', x_eve)
         y_predict = sm.predict_values(x_eve)
-        # print('y_predict', y_predict)
 
         dy_dt = sm.predict_derivatives(x_eve, 0).flatten()
         dy_dsoc = sm.predict_derivatives(x_eve, 1).flatten()

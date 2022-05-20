@@ -1,3 +1,4 @@
+from lib2to3.pgen2 import driver
 import time
 import matplotlib.pyplot as plt
 import openmdao.api as om
@@ -36,7 +37,8 @@ class ODEProblemTest(ODEProblem):
         self.add_state('SoC',
                        'dSoC_dt',
                        initial_condition_name='SoC_0',
-                       shape=num_cells)
+                       shape=num_cells,
+                       output='SoC_integrated')
         self.add_state('U_Th',
                        'dU_Th_dt',
                        initial_condition_name='U_Th_0',
@@ -81,7 +83,7 @@ class RunModel(csdl.Model):
         num_cells = self.parameters['num_cells']
         num_times = self.parameters['num_times']
 
-        h_stepsize = 0.00001
+        h_stepsize = 10.
 
         # Create given inputs
         # Coefficients for field output
@@ -89,15 +91,16 @@ class RunModel(csdl.Model):
                                    np.ones(num_times) / (num_times))
         # Initial condition for state
         self.create_input('SoC_0', np.ones(num_cells) * 1.0)
-        self.create_input('U_Th_0', np.ones(num_cells) * 4.0)
-        self.create_input('T_cell_0', np.ones(num_cells) * 40.0)
+        self.create_input('U_Th_0', np.ones(num_cells) * 0.)
+        self.create_input('T_cell_0', np.ones(num_cells) * 20.0)
 
         # Create parameter for power_profile (dummy values right now)
-        power_profile = np.zeros((
-            num_times, )) * 1000  # dynamic parameter defined at every timestep
-        for t in range(num_times):
-            power_profile[
-                t] = 1.0 + t / num_times / 5.0  # dynamic parameter defined at every timestep
+        power_profile = np.zeros(
+            (num_times, ))  # dynamic parameter defined at every timestep
+        # for t in range(num_times):
+        #     power_profile[
+        #         t] = 1.0 + t / num_times / 5.0  # dynamic parameter defined at every timestep
+        power_profile = power * 1000 / (n_s * n_p)
 
         # Add to csdl model which are fed into ODE Model
         power_profilei = self.create_input('power_profile', power_profile)
@@ -109,26 +112,98 @@ class RunModel(csdl.Model):
         # Create model containing integrator
         # We can also pass through parameters to the ODE system from this model.
         # params_dict = {'power_profile': power_profile}
-        ODEProblem = ODEProblemTest('RK4',
-                                    'time-marching',
-                                    num_times,
-                                    display='default',
-                                    visualization='None')
+        ODEProblem = ODEProblemTest(
+            'RK4',
+            # ODEProblem = ODEProblemTest('BackwardEuler',
+            # ODEProblem = ODEProblemTest('ForwardEuler',
+            'time-marching',
+            num_times,
+            display='default',
+            visualization='None')
         # ODEProblem_instance
         self.add(ODEProblem.create_solver_model(), 'subgroup', ['*'])
         # ODEProblem = ODEProblemTest('ExplicitMidpoint', 'time-marching', num_times, visualization='None')
 
         fo = self.declare_variable('field_output')
         self.register_output('fo', fo * 1.0)
+        # self.add_design_variable('SoC_0', lower=10, upper=20)
+        self.add_design_variable('U_Th_0', lower=3, upper=5)
+        self.add_objective('fo')
 
+
+########################################################################################################
+# 1. load aircraft time profile
+t_taxi = 10
+t_takeoff = 40
+t_climb = 4.4 * 60
+t_cruise = 16.7 * 60
+t_landing = 70
+t_cruise_res = 20 * 60
+
+# 2. load aircraft power profile (kW)
+P_taxi = 46.8
+p_takeoff = 829.2
+P_climb = 524.1
+P_cruise = 282.0
+P_landing = 829.2
+P_cruise_res = 282.0
+p_list = [P_taxi, p_takeoff, P_climb, P_cruise, P_landing, P_cruise_res]
+
+# 3. setup delat_t, and define each process in the discretized time step
+delta_t = 10
+
+t_list = [t_taxi, t_takeoff, t_climb, t_cruise, t_landing, t_cruise_res]
+t_total = sum(t_list)
+t_step_process = np.cumsum(t_list) / delta_t
+t_step_process_round = [int(round(num)) for num in t_step_process]
+
+time = np.arange(0,
+                 round(t_total / delta_t + 1) * (delta_t),
+                 delta_t)  # shape=258
+power = np.zeros(time.size)
+for i in range(time.size):
+    if i <= t_step_process_round[0]:
+        power[i] = p_list[0]
+    elif i > t_step_process_round[0] and i <= t_step_process_round[1]:
+        power[i] = p_list[1]
+    elif i > t_step_process_round[1] and i <= t_step_process_round[2]:
+        power[i] = p_list[2]
+    elif i > t_step_process_round[2] and i <= t_step_process_round[3]:
+        power[i] = p_list[3]
+    elif i > t_step_process_round[3] and i <= t_step_process_round[4]:
+        power[i] = p_list[4]
+    elif i > t_step_process_round[4] and i <= t_step_process_round[5]:
+        power[i] = p_list[5]
+#####################################################################################################
+
+n_s = 190
+# n_s = 1000
+# assuming 46800 3230
+
+# assuming 21700 16150
+n_p = int(16150 / n_s)
 
 num_cells = 1
-num_times = 10
+num_times = 260
 # Simulator Object: Note we are passing in a parameter that can be used in the ode system
 sim = csdl_om.Simulator(RunModel(num_times=num_times, num_cells=num_cells),
                         mode='rev')
 sim.prob.run_model()
+driver = sim.prob.driver = om.pyOptSparseDriver()
+sim.prob.driver.options["optimizer"] = "SNOPT"
+driver.options["optimizer"] = "SNOPT"
+driver.opt_settings["Verify level"] = 1
+
+driver.opt_settings["Major iterations limit"] = 100
+driver.opt_settings["Minor iterations limit"] = 100000
+driver.opt_settings["Iterations limit"] = 100000000
+driver.opt_settings["Major step limit"] = 2.0
+driver.opt_settings["Major feasibility tolerance"] = 1.0e-5
+driver.opt_settings["Major optimality tolerance"] = 6.0e-6
+
+# sim.prob.model.add_design_var("T_cell_0")
+# sim.prob.run_driver()
 
 # # Checktotals
-print(sim.prob['field_output'])
-sim.prob.check_totals(of=['fo'], wrt=['SoC_0'], compact_print=True)
+# print(sim.prob['field_output'])
+sim.prob.check_totals(of=['SoC_integrated'], wrt=['SoC_0'], compact_print=True)
