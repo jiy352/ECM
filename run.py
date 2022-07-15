@@ -1,17 +1,16 @@
-from lib2to3.pgen2 import driver
 import time
 import matplotlib.pyplot as plt
 import openmdao.api as om
 from ozone.api import ODEProblem, Wrap, NativeSystem
-from ecm_system import ODESystemNative
+from lsdo_ecm.ecm_system import ODESystemNative
 import csdl
 import csdl_om
+import csdl_lite
 import numpy as np
+
+from lsdo_ecm.ecm_preprocessing import ECMPreprocessingModel
 """
-This example showcases the following:
-- ability to define multiple ODE functions with coupling. For this example, the Lotka–Volterra equations have two states (x, y) which are coupled.
-- ability to pass csdl parameters to your ODE function model
-- multiple ways to define the ODE model itself. More info in 'ode_systems.py' where they are defined
+ECM using ozone
 """
 
 # ODE problem CLASS
@@ -83,7 +82,7 @@ class RunModel(csdl.Model):
         num_cells = self.parameters['num_cells']
         num_times = self.parameters['num_times']
 
-        h_stepsize = 10.
+        h_stepsize = delta_t
 
         # Create given inputs
         # Coefficients for field output
@@ -95,15 +94,29 @@ class RunModel(csdl.Model):
         self.create_input('T_cell_0', np.ones(num_cells) * 20.0)
 
         # Create parameter for power_profile (dummy values right now)
-        power_profile = np.zeros(
-            (num_times, ))  # dynamic parameter defined at every timestep
+        # power_profile = np.zeros(
+        #     (num_times, ))  # dynamic parameter defined at every timestep
         # for t in range(num_times):
         #     power_profile[
         #         t] = 1.0 + t / num_times / 5.0  # dynamic parameter defined at every timestep
-        power_profile = power * 1000 / (n_s * n_p)
+        num_nodes = 6
+        self.create_input('input_power',
+                          val=np.array(p_list).reshape(num_nodes, 1))
+        self.create_input('input_time',
+                          val=np.array(t_list).reshape(num_nodes, 1))
+        submodel = ECMPreprocessingModel(
+            num_nodes=num_nodes,
+            delta_t=delta_t,
+            t_step_round=np.array(t_step_process_round) + 1)
+
+        self.add(submodel, 'ECMPreprocessingModel')
+        power = self.declare_variable('power',
+                                      shape=(t_step_process_round[-1] + 1, 1))
+        power_profile = csdl.reshape(power * 1000 / (n_s * n_p),
+                                     (t_step_process_round[-1] + 1, ))
 
         # Add to csdl model which are fed into ODE Model
-        power_profilei = self.create_input('power_profile', power_profile)
+        power_profilei = self.register_output('power_profile', power_profile)
 
         # Timestep vector
         h_vec = np.ones(num_times - 1) * h_stepsize
@@ -150,7 +163,7 @@ P_cruise_res = 282.0
 p_list = [P_taxi, p_takeoff, P_climb, P_cruise, P_landing, P_cruise_res]
 
 # 3. setup delat_t, and define each process in the discretized time step
-delta_t = 10
+delta_t = 20
 
 t_list = [t_taxi, t_takeoff, t_climb, t_cruise, t_landing, t_cruise_res]
 t_total = sum(t_list)
@@ -184,26 +197,11 @@ n_s = 190
 n_p = int(16150 / n_s)
 
 num_cells = 1
-num_times = 260
+num_times = time.size
 # Simulator Object: Note we are passing in a parameter that can be used in the ode system
 sim = csdl_om.Simulator(RunModel(num_times=num_times, num_cells=num_cells),
                         mode='rev')
+# sim = csdl_lite.Simulator(RunModel(num_times=num_times, num_cells=num_cells),
+#                           mode='rev')
+# sim.visualize_implementation()
 sim.prob.run_model()
-driver = sim.prob.driver = om.pyOptSparseDriver()
-sim.prob.driver.options["optimizer"] = "SNOPT"
-driver.options["optimizer"] = "SNOPT"
-driver.opt_settings["Verify level"] = 1
-
-driver.opt_settings["Major iterations limit"] = 100
-driver.opt_settings["Minor iterations limit"] = 100000
-driver.opt_settings["Iterations limit"] = 100000000
-driver.opt_settings["Major step limit"] = 2.0
-driver.opt_settings["Major feasibility tolerance"] = 1.0e-5
-driver.opt_settings["Major optimality tolerance"] = 6.0e-6
-
-# sim.prob.model.add_design_var("T_cell_0")
-# sim.prob.run_driver()
-
-# # Checktotals
-# print(sim.prob['field_output'])
-sim.prob.check_totals(of=['SoC_integrated'], wrt=['SoC_0'], compact_print=True)

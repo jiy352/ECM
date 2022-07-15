@@ -3,7 +3,7 @@ from ozone.api import NativeSystem
 import numpy as np
 
 import scipy.sparse as sp
-from ECM_data_21700 import T_bp, SOC_bp, tU_oc, tC_Th, tR_Th, tR_0
+from lsdo_ecm.ecm_data_21700 import T_bp, SOC_bp, tU_oc, tC_Th, tR_Th, tR_0
 
 from smt.surrogate_models import RMTB
 """
@@ -103,7 +103,7 @@ class ODESystemNative(NativeSystem):
             q_val = -self.k * self.A * (T_cell - self.T_pack)
             outputs['dT_cell_dt'][i] = (I_L**2 * (R_Th + R_0) + q_val) / (
                 self.m_cell * self.c_cell) / 1e0
-            print('dT_cell_dt', outputs['dT_cell_dt'][i])
+            # print('dT_cell_dt', outputs['dT_cell_dt'][i])
 
     def compute_partials(self, inputs, partials):
         n = self.num_nodes
