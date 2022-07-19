@@ -38,7 +38,8 @@ class ODESystemNative(NativeSystem):
         self.add_input('U_Th', shape=(n, self.num_cells))
         self.add_input('T_cell', shape=(n, self.num_cells))
 
-        self.add_input('power_profile', shape=n)
+        self.add_input('power_profile', shape=(n,1))
+        self.add_input('n_parallel', shape=(n,1))
         ###############
         # add outputs
         ###############
@@ -69,9 +70,9 @@ class ODESystemNative(NativeSystem):
 
         # We have accessed a parameter passed in through the ODEproblem
         # !TODO:! how to treat dynamic parameter
-        n_s = 84
-        n_p = 21 * 2
-        P_batt_i = power_profile / (n_s * n_p)
+        n_s = 190
+        n_p = int(16150 / n_s)
+        P_batt_i = power_profile / (n_s * n_p)*1000
         # outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
         # outputs['dU_Th_dt'] = np.zeros((n, self.num_cells))
         # outputs['dT_cell_dt'] = np.zeros((n, self.num_cells))
@@ -86,7 +87,7 @@ class ODESystemNative(NativeSystem):
             T_cell = inputs['T_cell'][i]
             SoC = inputs['SoC'][i]
 
-            P_batt_i = power_profile
+            
             # compute battery parameters
             R_Th, _, _ = self._PolarizationResistance(SoC, T_cell)
             C_Th, _ = self._EquivCapacitance(SoC)
@@ -98,11 +99,12 @@ class ODESystemNative(NativeSystem):
 
             # compute the outputs
             # three states for the cells
+            print('dSoC_dt',-I_L / self.Q_max / 3600)
             outputs['dSoC_dt'][i] = -I_L / self.Q_max / 3600
             outputs['dU_Th_dt'][i] = (I_L - U_Th / R_Th) / C_Th
             q_val = -self.k * self.A * (T_cell - self.T_pack)
             outputs['dT_cell_dt'][i] = (I_L**2 * (R_Th + R_0) + q_val) / (
-                self.m_cell * self.c_cell) / 1e0
+                self.m_cell * self.c_cell) / 1e3
             # print('dT_cell_dt', outputs['dT_cell_dt'][i])
 
     def compute_partials(self, inputs, partials):
@@ -125,9 +127,9 @@ class ODESystemNative(NativeSystem):
         dT_cell_dU_Th = []
 
         # the power output required
-        n_s = 84
-        n_p = 21 * 2
-        P_batt_i = power_profile / (n_s * n_p)
+        n_s = 190
+        n_p = int(16150 / n_s)
+        P_batt_i = power_profile / (n_s * n_p)*1000
 
         # loop over stages
         # The partials to compute.
@@ -190,7 +192,7 @@ class ODESystemNative(NativeSystem):
             deri_q_val_T_cell_i = -self.k * self.A
             dT_cell_dT_cell_i = 1 / (self.m_cell * self.c_cell) * (
                 (2 * I_L * (R_Th + R_0) * PI_LpTcell + I_L**2 * dR0_dT +
-                 I_L**2 * dR_Th_dT_cell) + deri_q_val_T_cell_i) / 1e0
+                 I_L**2 * dR_Th_dT_cell) + deri_q_val_T_cell_i) / 1e3
 
             # change format to diagnal flat
             dSoC_dU_Th_i = np.diagflat(dSoC_dt_dU_Th_i)
