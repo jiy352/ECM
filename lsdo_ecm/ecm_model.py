@@ -85,12 +85,15 @@ class RunModel(csdl.Model):
         self.parameters.declare('num_cells')
         self.parameters.declare('num_segments')
         self.parameters.declare('n_s',default=200)
+        self.parameters.declare('n_pack',default=1)
+
 
     def define(self):
         t_end = self.parameters['t_end']
         num_cells = self.parameters['num_cells']
         num_times = self.parameters['num_times']
         num_segments = self.parameters['num_segments']
+        n_pack=self.parameters['n_pack']
 
         # n_s = 190
         n_s = self.parameters['n_s']
@@ -115,7 +118,7 @@ class RunModel(csdl.Model):
 
         # num_times_ = 1
         input_power = self.declare_variable('input_power',
-                          shape=(num_segments, 1))
+                          val=np.ones((num_segments, 1))*200)
         input_time  =self.declare_variable('input_time',shape=(num_segments,1))
 
         submodel = ECMPreprocessingModel(
@@ -138,7 +141,7 @@ class RunModel(csdl.Model):
         # Timestep vector
         h_vec = np.ones(num_times - 1) * h_stepsize
         self.create_input('h', h_vec)
-
+        params_dict = {'n_pack': n_pack}
         # Create model containing integrator
         # We can also pass through parameters to the ODE system from this model.
         # params_dict = {'power_profile': power_profile}
@@ -152,7 +155,7 @@ class RunModel(csdl.Model):
             visualization='None',
         )
         # ODEProblem_instance
-        self.add(ODEProblem.create_solver_model(), 'subgroup', ['*'])
+        self.add(ODEProblem.create_solver_model(ODE_parameters=params_dict), 'subgroup', ['*'])
 
 
 

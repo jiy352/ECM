@@ -47,7 +47,7 @@ input_power = model_1.create_input(name='input_power',
                     val=np.array(p_list).reshape(num_segments, 1))
 input_time  =model_1.create_input(name='input_time',val=np.array(t_list).reshape(num_segments, 1))
 
-submodel = RunModel(t_end=t_end,num_times=num_times, num_cells=num_cells,num_segments=num_segments,n_s=n_s)
+submodel = RunModel(t_end=t_end,num_times=num_times, num_cells=1,num_segments=num_segments,n_s=n_s,n_pack=1)
 model_1.add(submodel, 'ECMPreprocessingModel')
 
 # Simulator Object: Note we are passing in a parameter that can be used in the ode system

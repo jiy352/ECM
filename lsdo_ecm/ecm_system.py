@@ -26,26 +26,26 @@ class ODESystemNative(NativeSystem):
     def setup(self):
         # NativeSystem does not require an initialization to access parameters
         n = self.num_nodes
-
+        n_pack = self.parameters['n_pack']
         # Need to have ODE shapes similar as first example
-        self.num_cells = 1
+        self.n_pack = n_pack
         self.Q_max = 5
 
         ###############
         # add inputs: states and parameters
         ###############
-        self.add_input('SoC', shape=(n, self.num_cells))
-        self.add_input('U_Th', shape=(n, self.num_cells))
-        self.add_input('T_cell', shape=(n, self.num_cells))
+        self.add_input('SoC', shape=(n, self.n_pack))
+        self.add_input('U_Th', shape=(n, self.n_pack))
+        self.add_input('T_cell', shape=(n, self.n_pack))
 
         self.add_input('power_profile', shape=(n,1))
         self.add_input('n_parallel', shape=(n,1))
         ###############
         # add outputs
         ###############
-        self.add_output('dSoC_dt', shape=(n, self.num_cells))
-        self.add_output('dU_Th_dt', shape=(n, self.num_cells))
-        self.add_output('dT_cell_dt', shape=(n, self.num_cells))
+        self.add_output('dSoC_dt', shape=(n, self.n_pack))
+        self.add_output('dU_Th_dt', shape=(n, self.n_pack))
+        self.add_output('dT_cell_dt', shape=(n, self.n_pack))
 
         # self.declare_partials(of='*', wrt='*')
         self.declare_partial_properties(of='*', wrt='*', empty=True)
@@ -57,6 +57,9 @@ class ODESystemNative(NativeSystem):
     def compute(self, inputs, outputs):
         n = self.num_nodes
         power_profile = inputs['power_profile']
+        n_pack = self.parameters['n_pack']
+        # print('n_pack',n_pack)
+        self.n_pack = n_pack
 
         self.k = 10
         self.A = 1
@@ -64,18 +67,18 @@ class ODESystemNative(NativeSystem):
         self.m_cell = 48e-3 * 2
         self.c_cell = 0.83 * 10000
         # initiate the states to be zeros
-        outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
-        outputs['dU_Th_dt'] = np.zeros((n, self.num_cells))
-        outputs['dT_cell_dt'] = np.zeros((n, self.num_cells))
+        outputs['dSoC_dt'] = np.zeros((n, self.n_pack))
+        outputs['dU_Th_dt'] = np.zeros((n, self.n_pack))
+        outputs['dT_cell_dt'] = np.zeros((n, self.n_pack))
 
         # We have accessed a parameter passed in through the ODEproblem
         # !TODO:! how to treat dynamic parameter
         n_s = 190
         n_p = int(16150 / n_s)
         P_batt_i = power_profile / (n_s * n_p)*1000
-        # outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
-        # outputs['dU_Th_dt'] = np.zeros((n, self.num_cells))
-        # outputs['dT_cell_dt'] = np.zeros((n, self.num_cells))
+        # outputs['dSoC_dt'] = np.zeros((n, self.n_pack))
+        # outputs['dU_Th_dt'] = np.zeros((n, self.n_pack))
+        # outputs['dT_cell_dt'] = np.zeros((n, self.n_pack))
 
         ######################
         # compute the outputs
