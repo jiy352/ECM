@@ -34,11 +34,11 @@ time = np.arange(0,
 
 n_s = 190
 # assuming 21700 16150
-# n_p = int(16150 / n_s)
+n_p = int(16150 / n_s)
 t_end=2600
 num_cells = 1
 
-num_times = 10
+num_times = 200
 num_segments=6
 n_s = 190
 
@@ -46,6 +46,7 @@ model_1 = csdl.Model()
 input_power = model_1.create_input(name='input_power',
                     val=np.array(p_list).reshape(num_segments, 1))
 input_time  =model_1.create_input(name='input_time',val=np.array(t_list).reshape(num_segments, 1))
+n_parallel  =model_1.create_input(name='n_parallel',val=np.ones(1)*85)
 
 submodel = RunModel(t_end=t_end,num_times=num_times, num_cells=num_cells,num_segments=num_segments,n_s=n_s)
 model_1.add(submodel, 'ECMPreprocessingModel')
@@ -55,6 +56,6 @@ model_1.add(submodel, 'ECMPreprocessingModel')
 #                         mode='rev')
 sim = csdl_om.Simulator(model_1, mode='fwd')
 # sim.prob.check_partials(compact_print=True)
-# sim.visualize_implementation()
+sim.visualize_implementation()
 sim.run()
 

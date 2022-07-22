@@ -38,8 +38,8 @@ class ODESystemNative(NativeSystem):
         self.add_input('U_Th', shape=(n, self.num_cells))
         self.add_input('T_cell', shape=(n, self.num_cells))
 
-        self.add_input('power_profile', shape=(n,self.n_pack))
-        self.add_input('n_parallel', shape=(n,self.n_pack))
+        self.add_input('power_profile', shape=(n,1))
+        self.add_input('n_parallel', shape=(n,1))
         ###############
         # add outputs
         ###############
@@ -58,10 +58,6 @@ class ODESystemNative(NativeSystem):
         n = self.num_nodes
         power_profile = inputs['power_profile']
         n_parallel = inputs['n_parallel']
-        n_pack = self.parameters['n_pack']
-        # print('n_pack',n_pack)
-        self.n_pack = n_pack
-
 
         self.k = 10
         self.A = 1
@@ -75,7 +71,7 @@ class ODESystemNative(NativeSystem):
 
         # We have accessed a parameter passed in through the ODEproblem
         # !TODO:! how to treat dynamic parameter
-        n_s = 190
+        n_s = self.parameters['n_s']
         n_p = n_parallel
         P_batt_i = power_profile / (n_s * n_p)*1000
         # outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
@@ -116,7 +112,6 @@ class ODESystemNative(NativeSystem):
         n = self.num_nodes
         power_profile = inputs['power_profile']
         n_parallel = inputs['n_parallel']
-
         ############################
         # empty lists to store the
         # value of the derivatives
@@ -134,7 +129,7 @@ class ODESystemNative(NativeSystem):
         dT_cell_dU_Th = []
 
         # the power output required
-        n_s = 190
+        n_s = self.parameters['n_s']
         n_p = n_parallel
         P_batt_i = power_profile / (n_s * n_p)*1000
 

@@ -127,7 +127,7 @@ class RunModel(csdl.Model):
         power_profile = self.declare_variable('power_profile',
                                       shape=(num_times, 1))
         n_parallel = self.declare_variable('n_parallel',
-                                      val=np.ones(n_pack)*85)
+                                      shape=(1,))
         # self.register_output('n_parallel_dummay',n_parallel+1)
         # power_profile = csdl.reshape(power * 1000 / (n_s * n_p),
         #                              (num_times, ))
@@ -152,7 +152,8 @@ class RunModel(csdl.Model):
             visualization='None',
         )
         # ODEProblem_instance
-        self.add(ODEProblem.create_solver_model(), 'subgroup', ['*'])
+        para_dict={'n_s':n_s}
+        self.add(ODEProblem.create_solver_model(ODE_parameters=para_dict), 'subgroup', ['*'])
 
 
 
