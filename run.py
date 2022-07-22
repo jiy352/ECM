@@ -34,11 +34,11 @@ time = np.arange(0,
 
 n_s = 190
 # assuming 21700 16150
-# n_p = int(16150 / n_s)
+n_p = int(16150 / n_s)
 t_end=2600
 num_cells = 1
 
-num_times = 10
+num_times = 200
 num_segments=6
 n_s = 190
 
@@ -55,6 +55,6 @@ model_1.add(submodel, 'ECMPreprocessingModel')
 #                         mode='rev')
 sim = csdl_om.Simulator(model_1, mode='fwd')
 # sim.prob.check_partials(compact_print=True)
-# sim.visualize_implementation()
+sim.visualize_implementation()
 sim.run()
 
