@@ -55,7 +55,7 @@ class ECMPreprocessingModel(Model):
         self.print_var(t_cs)
         alpha_ = 1
         y = self.create_output('y',shape=(num_segments,num_times))
-        t = self.declare_variable('t',val=np.linspace(0,t_end,num_times).reshape(1,num_times))
+        t = self.create_input('t',val=np.linspace(0,t_end,num_times).reshape(1,num_times))
 
 
         for i in range(num_segments):

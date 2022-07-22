@@ -152,7 +152,8 @@ class RunModel(csdl.Model):
             visualization='None',
         )
         # ODEProblem_instance
-        self.add(ODEProblem.create_solver_model(), 'subgroup', ['*'])
+        para_dict={'n_s':n_s}
+        self.add(ODEProblem.create_solver_model(ODE_parameters=para_dict), 'subgroup', ['*'])
 
 
 
