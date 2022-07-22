@@ -57,10 +57,6 @@ class ODESystemNative(NativeSystem):
     def compute(self, inputs, outputs):
         n = self.num_nodes
         power_profile = inputs['power_profile']
-        n_parallel = inputs['n_parallel']
-        n_pack = self.parameters['n_pack']
-        # print('n_pack',n_pack)
-        self.n_pack = n_pack
 
 
         self.k = 10
