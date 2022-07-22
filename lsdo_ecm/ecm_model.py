@@ -127,8 +127,8 @@ class RunModel(csdl.Model):
         power_profile = self.declare_variable('power_profile',
                                       shape=(num_times, 1))
         n_parallel = self.declare_variable('n_parallel',
-                                      shape=(1,))
-        self.register_output('n_parallel_dummay',n_parallel+1)
+                                      val=np.ones(n_pack)*85)
+        # self.register_output('n_parallel_dummay',n_parallel+1)
         # power_profile = csdl.reshape(power * 1000 / (n_s * n_p),
         #                              (num_times, ))
 
