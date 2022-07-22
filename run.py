@@ -34,11 +34,11 @@ time = np.arange(0,
 
 n_s = 190
 # assuming 21700 16150
-n_p = int(16150 / n_s)
+# n_p = int(16150 / n_s)
 t_end=2600
 num_cells = 1
 
-num_times = 100
+num_times = 10
 num_segments=6
 n_s = 190
 
