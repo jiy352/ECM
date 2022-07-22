@@ -58,7 +58,6 @@ class ODESystemNative(NativeSystem):
         n = self.num_nodes
         power_profile = inputs['power_profile']
 
-
         self.k = 10
         self.A = 1
         self.T_pack = 20
