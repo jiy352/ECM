@@ -3,7 +3,7 @@ from lsdo_ecm.ecm_model import RunModel
 import numpy as np
 import csdl
 import csdl_om
-import csdl_lite
+# import csdl_lite
 
 ########################################################################################################
 # 1. load aircraft time profile
