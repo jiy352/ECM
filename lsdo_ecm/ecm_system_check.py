@@ -1,5 +1,6 @@
 import csdl
 from ozone.api import NativeSystem
+import openmdao.api as om
 import numpy as np
 
 import scipy.sparse as sp
@@ -21,10 +22,14 @@ self.ode_system = 'ode system model' in the ODEProblem class
 # Need to define partials unlike csdl but better performance
 
 
-class ODESystemNative(NativeSystem):
+class ODESystemNative(om.ExplicitComponent):
     # Setup sets up variables. similar to ExplicitComponnent in OpenMDAO
+    def initialize(self):
+        # self.options.declare['n_s']
+        self.options.declare('n_s', types=float)
     def setup(self):
         # NativeSystem does not require an initialization to access parameters
+        self.num_nodes=1
         n = self.num_nodes
 
         # Need to have ODE shapes similar as first example
@@ -35,15 +40,11 @@ class ODESystemNative(NativeSystem):
         # add inputs: states and parameters
         ###############
         self.add_input('SoC', shape=(n, self.num_cells))
-        self.add_input('U_Th', shape=(n, self.num_cells))
+        self.add_input('U_Th', shape=(n, self.num_cells),val=0)
         self.add_input('T_cell', shape=(n, self.num_cells))
 
         self.add_input('power_profile', shape=(n,1))
         self.add_input('n_parallel', shape=(n,1))
-
-        self.input_list = ['SoC', 'U_Th', 'T_cell', 'power_profile', 'n_parallel']
-        self.output_list = ['dSoC_dt', 'dU_Th_dt', 'dT_cell_dt']
-
         ###############
         # add outputs
         ###############
@@ -51,20 +52,20 @@ class ODESystemNative(NativeSystem):
         self.add_output('dU_Th_dt', shape=(n, self.num_cells))
         self.add_output('dT_cell_dt', shape=(n, self.num_cells))
 
-        # self.declare_partials(of='*', wrt='*')
-        self.declare_partial_properties(of='*', wrt='*')
+        self.declare_partials(of='*', wrt='*')
+        # self.declare_partial_properties(of='*', wrt='*', empty=True)
         # self.declare_partial_properties('*',
         #                                 '*',
         #                                 complex_step_directional=True)
 
     # compute the ODE function. similar to ExplicitComponnent in OpenMDAO
     def compute(self, inputs, outputs):
-        n = self.num_nodes
+        n = 1
+        self.num_nodes=1
         power_profile = inputs['power_profile']
         n_parallel = inputs['n_parallel']
 
         self.k = 10
-        # self.k = 2500
         self.A = 1
         self.T_pack = 20
         self.m_cell = 48e-3 * 2
@@ -76,7 +77,7 @@ class ODESystemNative(NativeSystem):
 
         # We have accessed a parameter passed in through the ODEproblem
         # !TODO:! how to treat dynamic parameter
-        n_s = self.parameters['n_s']
+        n_s = self.options['n_s']
         n_p = n_parallel
         P_batt_i = power_profile / (n_s * n_p)*1000
         # outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
@@ -100,13 +101,15 @@ class ODESystemNative(NativeSystem):
             U_OC, _, _ = self._OCV(SoC, T_cell)
             R_0, _, _ = self._InternalResistance(SoC, T_cell)
 
+            print('R_Th','C_Th','U_OC','R_0\n',R_Th,C_Th,U_OC,R_0)
+
             # compute I_L as the solution of a quadratic equation
             I_L = self._I_L_minus(U_OC, U_Th, R_0, P_batt_i)
 
             # compute the outputs
             # three states for the cells
-            # print('dSoC_dt',-I_L / self.Q_max / 3600)
-            outputs['dSoC_dt'][i] = -I_L / self.Q_max / 3600
+            print('dSoC_dt',-I_L / self.Q_max / 3600)
+            outputs['dSoC_dt'][i] = -I_L / (self.Q_max * 3600)
             outputs['dU_Th_dt'][i] = (I_L - U_Th / R_Th) / C_Th
             q_val = -self.k * self.A * (T_cell - self.T_pack)
             outputs['dT_cell_dt'][i] = (I_L**2 * (R_Th + R_0) + q_val) / (
@@ -115,10 +118,6 @@ class ODESystemNative(NativeSystem):
 
     def compute_partials(self, inputs, partials):
         n = self.num_nodes
-        for output_name in self.output_list:
-            for input_name in self.input_list:
-                partials[output_name][input_name] = np.zeros((1,1))*0.
-
         power_profile = inputs['power_profile']
         n_parallel = inputs['n_parallel']
         ############################
@@ -144,7 +143,7 @@ class ODESystemNative(NativeSystem):
         dT_cell_dt_dpower = []
 
         # the power output required
-        n_s = self.parameters['n_s']
+        n_s = self.options['n_s']
         n_p = n_parallel
         P_batt_i = power_profile / (n_s * n_p)*1000
 
@@ -252,50 +251,43 @@ class ODESystemNative(NativeSystem):
             dT_cell_dn_p.append(sp.lil_matrix(dT_cell_dnp_i))
             dT_cell_dt_dpower.append(sp.lil_matrix(dT_cell_dpower_i))
 
-
-        partials['dSoC_dt']['U_Th'] = sp.block_diag(dSoC_dU_Th, format='csc').toarray()
-        partials['dSoC_dt']['SoC'] = sp.block_diag(dSoC_dSoC, format='csc').toarray()
-        partials['dSoC_dt']['T_cell'] = sp.block_diag(dSoC_dT_cell,
-                                                      format='csc').toarray()
-        partials['dSoC_dt']['n_parallel'] = sp.block_diag(dSoC_dn_p,
-                                                      format='csc').toarray()
-        partials['dSoC_dt']['power_profile'] = sp.block_diag(dSoC_dt_dpower,
-                                                      format='csc').toarray()
+        partials['dSoC_dt','U_Th'] = sp.block_diag(dSoC_dU_Th, format='csc')
+        partials['dSoC_dt','SoC'] = sp.block_diag(dSoC_dSoC, format='csc')
+        partials['dSoC_dt','T_cell'] = sp.block_diag(dSoC_dT_cell,
+                                                      format='csc')
+        partials['dSoC_dt','n_parallel'] = sp.block_diag(dSoC_dn_p,
+                                                      format='csc')
+        partials['dSoC_dt','power_profile'] = sp.block_diag(dSoC_dt_dpower,
+                                                      format='csc')
                                                     
-        partials['dU_Th_dt']['U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc').toarray()
-        partials['dU_Th_dt']['SoC'] = sp.block_diag(dU_Th_dSoC, format='csc').toarray()
-        partials['dU_Th_dt']['T_cell'] = sp.block_diag(dU_Th_dT_cell,
-                                                       format='csc').toarray()
-        partials['dU_Th_dt']['n_parallel'] = sp.block_diag(dU_Th_dn_p,
-                                                       format='csc').toarray()
-        partials['dU_Th_dt']['power_profile'] = sp.block_diag(dU_Th_dt_dpower,
-                                                       format='csc').toarray()
+        partials['dU_Th_dt','U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc')
+        partials['dU_Th_dt','SoC'] = sp.block_diag(dU_Th_dSoC, format='csc')
+        partials['dU_Th_dt','T_cell'] = sp.block_diag(dU_Th_dT_cell,
+                                                       format='csc')
+        partials['dU_Th_dt','n_parallel'] = sp.block_diag(dU_Th_dn_p,
+                                                       format='csc')
+        partials['dU_Th_dt','power_profile'] = sp.block_diag(dU_Th_dt_dpower,
+                                                       format='csc')
 
 
-        partials['dT_cell_dt']['T_cell'] = sp.block_diag(dT_cell_dT_cell,
-                                                         format='csc').toarray()
-        partials['dT_cell_dt']['SoC'] = sp.block_diag(dT_cell_dSoC,
-                                                      format='csc').toarray()
-        partials['dT_cell_dt']['U_Th'] = sp.block_diag(dT_cell_dU_Th,
-                                                       format='csc').toarray()
-        partials['dT_cell_dt']['n_parallel'] = sp.block_diag(dT_cell_dn_p,
-                                                       format='csc').toarray()
-        partials['dT_cell_dt']['power_profile'] = sp.block_diag(dT_cell_dt_dpower,
-                                                       format='csc').toarray()
+        partials['dT_cell_dt','T_cell'] = sp.block_diag(dT_cell_dT_cell,
+                                                         format='csc')
+        partials['dT_cell_dt','SoC'] = sp.block_diag(dT_cell_dSoC,
+                                                      format='csc')
+        partials['dT_cell_dt','U_Th'] = sp.block_diag(dT_cell_dU_Th,
+                                                       format='csc')
+        partials['dT_cell_dt','n_parallel'] = sp.block_diag(dT_cell_dn_p,
+                                                       format='csc')
+        partials['dT_cell_dt','power_profile'] = sp.block_diag(dT_cell_dt_dpower,
+                                                       format='csc')
+        # partials['dU_Th_dt','U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc')
+        # partials['dU_Th_dt','SoC'] = sp.block_diag(dU_Th_dSoC, format='csc')
 
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['U_Th']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['SoC']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['n_parallel']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['power_profile']).shape)
-
-        # partials['dU_Th_dt']['U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc')
-        # partials['dU_Th_dt']['SoC'] = sp.block_diag(dU_Th_dSoC, format='csc')
-
-        # partials['dT_cell_dt']['T_cell'] = sp.block_diag(dT_cell_dT_cell,
+        # partials['dT_cell_dt','T_cell'] = sp.block_diag(dT_cell_dT_cell,
         #                                                  format='csc')
-        # partials['dT_cell_dt']['SoC'] = sp.block_diag(dT_cell_dSoC,
+        # partials['dT_cell_dt','SoC'] = sp.block_diag(dT_cell_dSoC,
         #                                               format='csc')
-        # partials['dT_cell_dt']['U_Th'] = sp.block_diag(dT_cell_dU_Th,
+        # partials['dT_cell_dt','U_Th'] = sp.block_diag(dT_cell_dU_Th,
         #    format='csc')
 
         # The structure of partials has the following for n = self.num_nodes =  4:
@@ -363,44 +355,25 @@ class ODESystemNative(NativeSystem):
         dC_1_dSoC = -94.4 * SoC**3 - 73.8 * SoC**2 - 11800 * SoC + 7240
         return C_1, dC_1_dSoC
 
-    # def _I_L_minus(self, U_oc, U_Th, R_0, P_batt_i):
-    #     if (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i > 0:
-    #         I_L_minus = ((U_oc - U_Th) - np.sqrt(
-    #             (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i)) / (2 * R_0)
-    #     else:
-    #         print('no solution!!!!!!!!!!!!!!')
-    #         print('U_oc!!!!!!!!!!!!!!', U_oc)
-    #         print('U_Th!!!!!!!!!!!!!!', U_Th)
-    #         print('(U_oc - U_Th)**2!!!!!!!!!!!!!!', (U_oc - U_Th)**2)
-    #         print('R_0!!!!!!!!!!!!!!', R_0)
-    #         print('P_batt_i!!!!!!!!!!!!!!', P_batt_i)
-    #         print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)
-    #         I_L_minus = ((U_oc - U_Th)) / (2 * R_0)
-    #     return I_L_minus
-
     def _I_L_minus(self, U_oc, U_Th, R_0, P_batt_i):
         if (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i > 0:
             I_L_minus = ((U_oc - U_Th) - np.sqrt(
                 (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i)) / (2 * R_0)
-            print('I_L_minus',I_L_minus)
-            
         else:
             print('no solution!!!!!!!!!!!!!!')
-            print('U_oc!!!!!!!!!!!!!!', U_oc)
-            print('U_Th!!!!!!!!!!!!!!', U_Th)
             print('(U_oc - U_Th)**2!!!!!!!!!!!!!!', (U_oc - U_Th)**2)
             print('R_0!!!!!!!!!!!!!!', R_0)
             print('P_batt_i!!!!!!!!!!!!!!', P_batt_i)
             print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)
-        #     I_L_minus = ((U_oc - U_Th)) / (2 * R_0)
+            I_L_minus = ((U_oc - U_Th)) / (2 * R_0)
         return I_L_minus
 
-        # print("I_L_minus", I_L_minus)
-        # print("U_oc", U_oc)
-        # print("U_Th", U_Th)
-        # print("R_0", R_0)
-        # print("P_batt_i", P_batt_i)
-        # return I_L_minus
+        print("I_L_minus", I_L_minus)
+        print("U_oc", U_oc)
+        print("U_Th", U_Th)
+        print("R_0", R_0)
+        print("P_batt_i", P_batt_i)
+        return I_L_minus
 
     def _predict_eve(self,
                      y,
@@ -417,12 +390,15 @@ class ODESystemNative(NativeSystem):
         '''
         # x_T = np.tile(T_bp, SOC_bp.shape[1]).reshape(-1, 4).T.flatten()
         # x_S0C = SOC_bp.T.flatten()
+
         x_T = T_bp
         x_S0C = SOC_bp
-        # print('x_T', x_T.shape)
-        # print('x_S0C', x_S0C.shape)
+
         x = np.concatenate((x_T, x_S0C)).reshape(-1, 2, order='F')
-        xlimits = np.array([[-300, 300.0], [-10., 10.000000001]])
+        print('x_T', x_T)
+        print('x_S0C', x_S0C)
+        print('x', x.shape,x)
+        xlimits = np.array([[-50, 60.0], [0., 1.100000001]])
         sm = RMTB(
             xlimits=xlimits,
             order=order,
@@ -449,3 +425,12 @@ class ODESystemNative(NativeSystem):
         # print('dy_dt', dy_dt)
         # print('dy_dsoc', dy_dsoc)
         return y_predict.flatten(), dy_dt.flatten(), dy_dsoc.flatten()
+
+if __name__ == "__main__":
+
+    prob = om.Problem()
+
+    prob.model.add_subsystem('ODESystemNative', ODESystemNative(n_s=85.))
+
+    prob.setup()
+    prob.check_partials(compact_print=True)

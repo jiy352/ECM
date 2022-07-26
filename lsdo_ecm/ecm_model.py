@@ -1,3 +1,4 @@
+from statistics import mode
 import time
 import matplotlib.pyplot as plt
 import openmdao.api as om
@@ -5,7 +6,6 @@ from ozone.api import ODEProblem, Wrap, NativeSystem
 from lsdo_ecm.ecm_system import ODESystemNative
 import csdl
 import csdl_om
-# import csdl_lite
 import numpy as np
 
 from lsdo_ecm.ecm_preprocessing import ECMPreprocessingModel
@@ -46,10 +46,10 @@ class ODEProblemTest(ODEProblem):
         self.add_state('U_Th',
                        'dU_Th_dt',
                        initial_condition_name='U_Th_0',
-                       shape=num_cells)
+                       shape=num_cells,output='U_Th_integrated')
         self.add_state('T_cell',
                        'dT_cell_dt',
-                       initial_condition_name='T_cell_0',
+                       initial_condition_name='T_cell_0',output='T_cell_integrated',
                        shape=num_cells)
 
         self.add_times(step_vector='h')
@@ -147,6 +147,7 @@ class RunModel(csdl.Model):
             'ForwardEuler',
             # 'RK4',
             'time-marching',
+            # 'solver-based',
             num_times,
             display='default',
             visualization='None',

@@ -1,7 +1,10 @@
+from statistics import mode
 from lsdo_ecm.ecm_model import RunModel
 import numpy as np
 import csdl
 import csdl_om
+import csdl_lite
+
 ########################################################################################################
 # 1. load aircraft time profile
 t_taxi = 10
@@ -13,24 +16,24 @@ t_cruise_res = 20 * 60
 
 # 2. load aircraft power profile (kW)
 P_taxi = 46.8
-p_takeoff = 829.2
+p_takeoff = 829.2/2
 P_climb = 524.1
 P_cruise = 282.0
-P_landing = 829.2
+P_landing = 829.2/2
 P_cruise_res = 282.0
 p_list = [P_taxi, p_takeoff, P_climb, P_cruise, P_landing, P_cruise_res]
 
 # 3. setup delat_t, and define each process in the discretized time step
-delta_t = 20
+# delta_t = 20
 
 t_list = [t_taxi, t_takeoff, t_climb, t_cruise, t_landing, t_cruise_res]
-t_total = sum(t_list)
-t_step_process = np.cumsum(t_list) / delta_t
-t_step_process_round = [int(round(num)) for num in t_step_process]
+# t_total = sum(t_list)
+# t_step_process = np.cumsum(t_list) / delta_t
+# t_step_process_round = [int(round(num)) for num in t_step_process]
 
-time = np.arange(0,
-                 round(t_total / delta_t + 1) * (delta_t),
-                 delta_t)  # shape=258
+# time = np.arange(0,
+#                  round(t_total / delta_t + 1) * (delta_t),
+#                  delta_t)  # shape=258
 
 n_s = 190
 # assuming 21700 16150
@@ -49,13 +52,21 @@ input_time  =model_1.create_input(name='input_time',val=np.array(t_list).reshape
 n_parallel  =model_1.create_input(name='n_parallel',val=np.ones(1)*85)
 
 submodel = RunModel(t_end=t_end,num_times=num_times, num_cells=num_cells,num_segments=num_segments,n_s=n_s)
-model_1.add(submodel, 'ECMPreprocessingModel')
+model_1.add(submodel, 'ECMPreprocessingModel')#,mode='rev')
 
 # Simulator Object: Note we are passing in a parameter that can be used in the ode system
 # sim = csdl_om.Simulator(RunModel(num_times=num_times, num_cells=num_cells),
 #                         mode='rev')
-sim = csdl_om.Simulator(model_1, mode='fwd')
-# sim.prob.check_partials(compact_print=True)
-sim.visualize_implementation()
+# sim = csdl_om.Simulator(model_1, mode='rev')
+sim = csdl_om.Simulator(model_1, mode='rev')
 sim.run()
+# a = sim.check_partials(compact_print=True)
+# a = sim.prob.check_totals(of=['SoC_integrated'],wrt=['SoC_0'],compact_print=True)
+# a = sim.prob.check_totals(of=['SoC_integrated'],wrt=['SoC_0','U_Th_0','T_cell_0'], compact_print=True)
+# a = sim.prob.check_totals(of=['SoC_integrated','T_cell_integrated'],wrt=['SoC_0','U_Th_0','T_cell_0','h','n_parallel','input_power','input_time'], compact_print=True)
+# sim.visualize_implementation()
+
+print('SoC',sim['SoC_integrated'])
+print('U_Th',sim['U_Th_integrated'])
+
 

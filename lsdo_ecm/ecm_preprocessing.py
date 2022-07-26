@@ -52,7 +52,7 @@ class ECMPreprocessingModel(Model):
         for i in range(num_segments+1):
             print(i)
             t_cs[i,:] = csdl.reshape(csdl.sum(t_vec[:i+1,:],axes=(0,)),(1,1))
-        self.print_var(t_cs)
+        # self.print_var(t_cs)
         alpha_ = 1
         y = self.create_output('y',shape=(num_segments,num_times))
         t = self.create_input('t',val=np.linspace(0,t_end,num_times).reshape(1,num_times))
@@ -118,3 +118,4 @@ if __name__ == "__main__":
     plt.legend(['tanh approximation with alpha=1'])
     plt.show()
     sim.prob.check_config(checks=['unconnected_inputs'])
+    a= sim.prob.check_partials(compact_print=True)
