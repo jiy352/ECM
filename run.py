@@ -49,7 +49,7 @@ model_1 = csdl.Model()
 input_power = model_1.create_input(name='input_power',
                     val=np.array(p_list).reshape(num_segments, 1))
 input_time  =model_1.create_input(name='input_time',val=np.array(t_list).reshape(num_segments, 1))
-n_parallel  =model_1.create_input(name='n_parallel',val=np.ones(1)*85)
+n_parallel  =model_1.create_input(name='n_parallel',val=np.ones(1)*200)
 
 submodel = RunModel(t_end=t_end,num_times=num_times, num_cells=num_cells,num_segments=num_segments,n_s=n_s)
 model_1.add(submodel, 'ECMPreprocessingModel')#,mode='rev')

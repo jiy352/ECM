@@ -3,7 +3,8 @@ import time
 import matplotlib.pyplot as plt
 import openmdao.api as om
 from ozone.api import ODEProblem, Wrap, NativeSystem
-from lsdo_ecm.ecm_system import ODESystemNative
+# from lsdo_ecm.ecm_system import ODESystemNative
+from lsdo_ecm.ecm_system_pretrain import ODESystemNative
 import csdl
 import csdl_om
 import numpy as np

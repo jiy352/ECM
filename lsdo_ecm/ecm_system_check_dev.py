@@ -4,6 +4,7 @@ import numpy as np
 
 import scipy.sparse as sp
 from lsdo_ecm.ecm_data_21700 import T_bp, SOC_bp, tU_oc, tC_Th, tR_Th, tR_0
+import openmdao.api as om
 
 from smt.surrogate_models import RMTB
 """
@@ -21,18 +22,21 @@ self.ode_system = 'ode system model' in the ODEProblem class
 # Need to define partials unlike csdl but better performance
 
 
-class ODESystemNative(NativeSystem):
-    # Setup sets up variables. similar to ExplicitComponnent in OpenMDAO
+class ODESystemNative(om.ExplicitComponent):
+    def initialize(self):
+        # self.options.declare['n_s']
+        self.options.declare('n_s', types=float)
     def setup(self):
-        # NativeSystem does not require an initialization to access parameters
-        n = self.num_nodes
+        # NativeSystem does not require an initialization to access options
+        n =1
+        self.num_nodes=1
 
         # Need to have ODE shapes similar as first example
         self.num_cells = 1
         self.Q_max = 5
 
         ###############
-        # add inputs: states and parameters
+        # add inputs: states and options
         ###############
         self.add_input('SoC', shape=(n, self.num_cells))
         self.add_input('U_Th', shape=(n, self.num_cells))
@@ -51,8 +55,8 @@ class ODESystemNative(NativeSystem):
         self.add_output('dU_Th_dt', shape=(n, self.num_cells))
         self.add_output('dT_cell_dt', shape=(n, self.num_cells))
 
-        # self.declare_partials(of='*', wrt='*')
-        self.declare_partial_properties(of='*', wrt='*')
+        self.declare_partials(of='*', wrt='*')
+        # self.declare_partial_properties(of='*', wrt='*')
         # self.declare_partial_properties('*',
         #                                 '*',
         #                                 complex_step_directional=True)
@@ -76,7 +80,7 @@ class ODESystemNative(NativeSystem):
 
         # We have accessed a parameter passed in through the ODEproblem
         # !TODO:! how to treat dynamic parameter
-        n_s = self.parameters['n_s']
+        n_s = self.options['n_s']
         n_p = n_parallel
         P_batt_i = power_profile / (n_s * n_p)*1000
         # outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
@@ -88,13 +92,13 @@ class ODESystemNative(NativeSystem):
         ######################
         # loop over stages
         for i in range(n):
-            # rename the states (and parameters) at the current stage
+            # rename the states (and options) at the current stage
             U_Th = inputs['U_Th'][i]
             T_cell = inputs['T_cell'][i]
             SoC = inputs['SoC'][i]
 
             
-            # compute battery parameters
+            # compute battery options
             R_Th, _, _ = self._PolarizationResistance(SoC, T_cell)
             C_Th, _ = self._EquivCapacitance(SoC)
             U_OC, _, _ = self._OCV(SoC, T_cell)
@@ -115,9 +119,9 @@ class ODESystemNative(NativeSystem):
 
     def compute_partials(self, inputs, partials):
         n = self.num_nodes
-        for output_name in self.output_list:
-            for input_name in self.input_list:
-                partials[output_name][input_name] = np.zeros((1,1))*0.
+        # for output_name in self.output_list:
+        #     for input_name in self.input_list:
+        #         partials[output_name][input_name] = np.zeros((1,1))*0.
 
         power_profile = inputs['power_profile']
         n_parallel = inputs['n_parallel']
@@ -144,7 +148,7 @@ class ODESystemNative(NativeSystem):
         dT_cell_dt_dpower = []
 
         # the power output required
-        n_s = self.parameters['n_s']
+        n_s = self.options['n_s']
         n_p = n_parallel
         P_batt_i = power_profile / (n_s * n_p)*1000
 
@@ -156,7 +160,7 @@ class ODESystemNative(NativeSystem):
             T_cell = inputs['T_cell'][i]
             SoC = inputs['SoC'][i]
 
-            # compute battery parameters
+            # compute battery options
             R_Th, dR_Th_dSOC, dR_Th_dT_cell = self._PolarizationResistance(
                 SoC, T_cell)
             C_Th, dC_1_dSoC = self._EquivCapacitance(SoC)
@@ -253,49 +257,49 @@ class ODESystemNative(NativeSystem):
             dT_cell_dt_dpower.append(sp.lil_matrix(dT_cell_dpower_i))
 
 
-        partials['dSoC_dt']['U_Th'] = sp.block_diag(dSoC_dU_Th, format='csc').toarray()
-        partials['dSoC_dt']['SoC'] = sp.block_diag(dSoC_dSoC, format='csc').toarray()
-        partials['dSoC_dt']['T_cell'] = sp.block_diag(dSoC_dT_cell,
+        partials['dSoC_dt','U_Th'] = sp.block_diag(dSoC_dU_Th, format='csc').toarray()
+        partials['dSoC_dt','SoC'] = sp.block_diag(dSoC_dSoC, format='csc').toarray()
+        partials['dSoC_dt','T_cell'] = sp.block_diag(dSoC_dT_cell,
                                                       format='csc').toarray()
-        partials['dSoC_dt']['n_parallel'] = sp.block_diag(dSoC_dn_p,
+        partials['dSoC_dt','n_parallel'] = sp.block_diag(dSoC_dn_p,
                                                       format='csc').toarray()
-        partials['dSoC_dt']['power_profile'] = sp.block_diag(dSoC_dt_dpower,
+        partials['dSoC_dt','power_profile'] = sp.block_diag(dSoC_dt_dpower,
                                                       format='csc').toarray()
                                                     
-        partials['dU_Th_dt']['U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc').toarray()
-        partials['dU_Th_dt']['SoC'] = sp.block_diag(dU_Th_dSoC, format='csc').toarray()
-        partials['dU_Th_dt']['T_cell'] = sp.block_diag(dU_Th_dT_cell,
+        partials['dU_Th_dt','U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc').toarray()
+        partials['dU_Th_dt','SoC'] = sp.block_diag(dU_Th_dSoC, format='csc').toarray()
+        partials['dU_Th_dt','T_cell'] = sp.block_diag(dU_Th_dT_cell,
                                                        format='csc').toarray()
-        partials['dU_Th_dt']['n_parallel'] = sp.block_diag(dU_Th_dn_p,
+        partials['dU_Th_dt','n_parallel'] = sp.block_diag(dU_Th_dn_p,
                                                        format='csc').toarray()
-        partials['dU_Th_dt']['power_profile'] = sp.block_diag(dU_Th_dt_dpower,
+        partials['dU_Th_dt','power_profile'] = sp.block_diag(dU_Th_dt_dpower,
                                                        format='csc').toarray()
 
 
-        partials['dT_cell_dt']['T_cell'] = sp.block_diag(dT_cell_dT_cell,
+        partials['dT_cell_dt','T_cell'] = sp.block_diag(dT_cell_dT_cell,
                                                          format='csc').toarray()
-        partials['dT_cell_dt']['SoC'] = sp.block_diag(dT_cell_dSoC,
+        partials['dT_cell_dt','SoC'] = sp.block_diag(dT_cell_dSoC,
                                                       format='csc').toarray()
-        partials['dT_cell_dt']['U_Th'] = sp.block_diag(dT_cell_dU_Th,
+        partials['dT_cell_dt','U_Th'] = sp.block_diag(dT_cell_dU_Th,
                                                        format='csc').toarray()
-        partials['dT_cell_dt']['n_parallel'] = sp.block_diag(dT_cell_dn_p,
+        partials['dT_cell_dt','n_parallel'] = sp.block_diag(dT_cell_dn_p,
                                                        format='csc').toarray()
-        partials['dT_cell_dt']['power_profile'] = sp.block_diag(dT_cell_dt_dpower,
+        partials['dT_cell_dt','power_profile'] = sp.block_diag(dT_cell_dt_dpower,
                                                        format='csc').toarray()
 
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['U_Th']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['SoC']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['n_parallel']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['power_profile']).shape)
+        # print('dSoC_dt_U_Th',(partials['dSoC_dt','U_Th']).shape)
+        # print('dSoC_dt_U_Th',(partials['dSoC_dt','SoC']).shape)
+        # print('dSoC_dt_U_Th',(partials['dSoC_dt','n_parallel']).shape)
+        # print('dSoC_dt_U_Th',(partials['dSoC_dt','power_profile']).shape)
 
-        # partials['dU_Th_dt']['U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc')
-        # partials['dU_Th_dt']['SoC'] = sp.block_diag(dU_Th_dSoC, format='csc')
+        # partials['dU_Th_dt','U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc')
+        # partials['dU_Th_dt','SoC'] = sp.block_diag(dU_Th_dSoC, format='csc')
 
-        # partials['dT_cell_dt']['T_cell'] = sp.block_diag(dT_cell_dT_cell,
+        # partials['dT_cell_dt','T_cell'] = sp.block_diag(dT_cell_dT_cell,
         #                                                  format='csc')
-        # partials['dT_cell_dt']['SoC'] = sp.block_diag(dT_cell_dSoC,
+        # partials['dT_cell_dt','SoC'] = sp.block_diag(dT_cell_dSoC,
         #                                               format='csc')
-        # partials['dT_cell_dt']['U_Th'] = sp.block_diag(dT_cell_dU_Th,
+        # partials['dT_cell_dt','U_Th'] = sp.block_diag(dT_cell_dU_Th,
         #    format='csc')
 
         # The structure of partials has the following for n = self.num_nodes =  4:
@@ -308,12 +312,12 @@ class ODESystemNative(NativeSystem):
 
     #############################
     # functions for fitting the
-    # battery parameters
+    # battery options
     #############################
 
     def _OCV(self, SoC, T_cell):
         '''compute ocv and d_ocv_dsoc, and d_ocv_dT_cell (f1)'''
-        U_OC, dU_OC_dT_cell_diag, dU_OC_dSoc_diag = self._predict_eve(
+        U_OC, dU_OC_dT_cell_diag, dU_OC_dSoc_diag = self._predict_eval(
             tU_oc, T_cell, SoC, order=4, num_ctrl_pts=4)
         # print('T_cell',T_cell.shape)
         # print('dU_OC_dT_cell_diag',dU_OC_dT_cell_diag.shape)
@@ -323,7 +327,7 @@ class ODESystemNative(NativeSystem):
     def _InternalResistance(self, SoC, T_cell):
         '''compute R_0 and d_ocv_dsoc, and dR0_dT (f2) SoC'''
 
-        R_0, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eve(tR_0,
+        R_0, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eval(tR_0,
                                                            T_cell,
                                                            SoC,
                                                            order=3,
@@ -347,7 +351,7 @@ class ODESystemNative(NativeSystem):
         # print('SoC---------------', SoC)
         # print('exp---------------', np.exp(-120 * SoC))
 
-        R_Th, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eve(
+        R_Th, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eval(
             tR_Th,
             T_cell,
             SoC,
@@ -379,7 +383,14 @@ class ODESystemNative(NativeSystem):
     #     return I_L_minus
 
     def _I_L_minus(self, U_oc, U_Th, R_0, P_batt_i):
+        print('U_oc',U_oc.shape, U_oc)
         if (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i > 0:
+            print('U_oc!!!!!!!!!!!!!!', U_oc)
+            print('U_Th!!!!!!!!!!!!!!', U_Th)
+            print('(U_oc - U_Th)**2!!!!!!!!!!!!!!', (U_oc - U_Th)**2)
+            print('R_0!!!!!!!!!!!!!!', R_0)
+            print('P_batt_i!!!!!!!!!!!!!!', P_batt_i)
+            print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)
             I_L_minus = ((U_oc - U_Th) - np.sqrt(
                 (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i)) / (2 * R_0)
             print('I_L_minus',I_L_minus)
@@ -392,7 +403,7 @@ class ODESystemNative(NativeSystem):
             print('R_0!!!!!!!!!!!!!!', R_0)
             print('P_batt_i!!!!!!!!!!!!!!', P_batt_i)
             print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)
-        #     I_L_minus = ((U_oc - U_Th)) / (2 * R_0)
+            I_L_minus = ((U_oc - U_Th)) / (2 * R_0)
         return I_L_minus
 
         # print("I_L_minus", I_L_minus)
@@ -402,27 +413,33 @@ class ODESystemNative(NativeSystem):
         # print("P_batt_i", P_batt_i)
         # return I_L_minus
 
-    def _predict_eve(self,
+    def _predict_eval(self,
                      y,
-                     xt_eve,
-                     xs_eve,
+                     xt_eval,
+                     xs_eval,
                      order,
                      num_ctrl_pts,
                      regularization_weight=1e-6):
         '''
         training set inputs (T; SoC) are automatically loaded from the x-57 paper
         y: training set outputs
-        xt_eve: evaluation set for temperature
-        xs_eve: evaluation set for soc
+        xt_eval: evaluation set for temperature
+        xs_eval: evaluation set for soc
         '''
-        # x_T = np.tile(T_bp, SOC_bp.shape[1]).reshape(-1, 4).T.flatten()
-        # x_S0C = SOC_bp.T.flatten()
+
         x_T = T_bp
         x_S0C = SOC_bp
         # print('x_T', x_T.shape)
         # print('x_S0C', x_S0C.shape)
         x = np.concatenate((x_T, x_S0C)).reshape(-1, 2, order='F')
-        xlimits = np.array([[-300, 300.0], [-10., 10.000000001]])
+        xlimits = np.array([[-1e-3, 40.0+1e-3], [-1e-3, 1+1e-3]])
+        if xs_eval.size != 1:
+            x_eval = np.concatenate((xt_eval, xs_eval)).reshape(-1, 2, order='F')
+        else:
+            x_eval = np.array([xt_eval, xs_eval]).reshape(-1, 2) 
+        lower_linear_msk, upper_linear_msk, interpolate_msk = self._get_mask_arrays(xlimits,x_eval)
+        linear_coeff = self._generate_linear_coeffs(lower_linear_msk, upper_linear_msk)       
+
         sm = RMTB(
             xlimits=xlimits,
             order=order,
@@ -431,21 +448,90 @@ class ODESystemNative(NativeSystem):
             regularization_weight=regularization_weight,
             print_global=False,
         )
+        self.sm=sm
         # print('x', x.shape)
         # print('y', y.shape)
         sm.set_training_values(x, y.flatten())
         sm.train()
 
-        if xs_eve.size != 1:
-            x_eve = np.concatenate((xt_eve, xs_eve)).reshape(-1, 2, order='F')
-        else:
-            x_eve = np.array([xt_eve, xs_eve]).reshape(-1, 2)
-        # print()
-        # print('x_eve', x_eve)
-        y_predict = sm.predict_values(x_eve)
+        print('x_eval', x_eval)
+        print('x_eval', x_eval*interpolate_msk)
+        print('linear_coeff',linear_coeff)
+        y_predict = sm.predict_values(x_eval*interpolate_msk) * interpolate_msk + np.sum(linear_coeff*x_eval,axis=1) 
+        print('y_predict', sm.predict_values(x_eval))
+        print('*interpolate_msk',interpolate_msk, y_predict)
 
-        dy_dt = sm.predict_derivatives(x_eve, 0).flatten()
-        dy_dsoc = sm.predict_derivatives(x_eve, 1).flatten()
-        # print('dy_dt', sm.predict_derivatives(x_eve, 0).shape, dy_dt.shape, dy_dt)
-        # print('dy_dsoc', dy_dsoc.shape, dy_dsoc)
+        dy_dt = (sm.predict_derivatives(x_eval*interpolate_msk, 0)*interpolate_msk).flatten() + linear_coeff[:,0].flatten()
+        dy_dsoc = (sm.predict_derivatives(x_eval*interpolate_msk, 1)*interpolate_msk).flatten() + linear_coeff[:,1].flatten()
+        print('dy_dt', dy_dt.shape, dy_dt)
+        print('dy_dsoc', dy_dsoc.shape, dy_dsoc)
         return y_predict.flatten(), dy_dt.flatten(), dy_dsoc.flatten()
+
+    def _get_mask_arrays(self,xlimits,x_eval):
+        '''
+        get mask arrays for l u and feasible regions
+        '''
+        x_lower = xlimits[:,0]
+        x_upper = xlimits[:,1]
+        # print('x_lower',x_lower)
+        # print('x_upper',x_upper)
+        # print('x_eval',x_eval)
+
+        lower_linear_msk = (x_eval <= x_lower)
+        upper_linear_msk = (x_eval > x_upper)
+        interpolate_msk = np.logical_and(~lower_linear_msk, ~upper_linear_msk)
+
+        interpolate_msk_ = interpolate_msk[:,0] *interpolate_msk[:,1]
+        print('lower_linear_msk',lower_linear_msk)
+        print('upper_linear_msk',upper_linear_msk)
+        print('interpolate_msk_',interpolate_msk_)
+        return lower_linear_msk, upper_linear_msk, interpolate_msk_
+
+    def _generate_linear_coeffs(self,lower_linear_msk,upper_linear_msk, x_eval,xlimits):
+        '''
+        get mask arrays for l u and feasible regions
+        '''
+
+        x_eval_lower = x_eval.copy()
+        x_eval_lower[:,1] = xlimits[0,1]
+        x_eval_upper= x_eval.copy()
+        x_eval_upper[:,1] = xlimits[1,1]
+        y_predict_lower_linear = self.sm.predict_values(x_eval_lower) 
+        y_predict_upper_linear = self.sm.predict_values(x_eval_upper)
+
+        dy_dt_lower = self.sm.predict_derivatives(x_eval_lower, 0)
+        dy_dsoc_lower = self.sm.predict_derivatives(x_eval_lower, 1)
+
+        dy_dt_upper = self.sm.predict_derivatives(x_eval_lower, 0)
+        dy_dsoc_upper = self.sm.predict_derivatives(x_eval_lower, 1)
+
+
+        dy_dt = (self.sm.predict_derivatives(x_eval*interpolate_msk, 0)*interpolate_msk).flatten() + linear_coeff[:,0].flatten()
+        dy_dsoc = (self.sm.predict_derivatives(x_eval*interpolate_msk, 1)*interpolate_msk).flatten() + linear_coeff[:,1].flatten()
+
+        a_0 = 1e-3
+        a_0 = 0.
+        a_1 = x_eval
+        b = 1
+        linear_coeff = np.zeros(lower_linear_msk.shape)
+        linear_coeff[:,0] = lower_linear_msk[:,0] *a_0 + upper_linear_msk[:,0] *(-a_0)
+        linear_coeff[:,1] = lower_linear_msk[:,1] *a_1 + upper_linear_msk[:,1] *(-a_1)
+        return linear_coeff
+
+
+if __name__ == "__main__":
+
+    prob = om.Problem()
+
+
+    prob.model.add_subsystem('ODESystemNative', ODESystemNative(n_s=2000.))
+    prob.setup()
+    prob.set_val('ODESystemNative.SoC', 1.2)
+    prob.set_val('ODESystemNative.T_cell', 45)
+
+    prob.setup()
+    prob.check_partials(compact_print=True)
+
+    prob.run_model()
+
+    print(prob['ODESystemNative.SoC'])

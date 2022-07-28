@@ -56,7 +56,9 @@ class ODESystemNative(NativeSystem):
         # self.declare_partial_properties('*',
         #                                 '*',
         #                                 complex_step_directional=True)
-
+        self.sm_OCV = self._pretrain(tU_oc, order=4, num_ctrl_pts=4)
+        self.sm_InternalResistance = self._pretrain(tR_0, order=3,num_ctrl_pts=4)
+        self.sm_PolarizationResistance = self._pretrain(tR_Th, order=3,num_ctrl_pts=5,regularization_weight=5e-6)
     # compute the ODE function. similar to ExplicitComponnent in OpenMDAO
     def compute(self, inputs, outputs):
         n = self.num_nodes
@@ -283,20 +285,7 @@ class ODESystemNative(NativeSystem):
         partials['dT_cell_dt']['power_profile'] = sp.block_diag(dT_cell_dt_dpower,
                                                        format='csc').toarray()
 
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['U_Th']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['SoC']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['n_parallel']).shape)
-        # print('dSoC_dt_U_Th',(partials['dSoC_dt']['power_profile']).shape)
 
-        # partials['dU_Th_dt']['U_Th'] = sp.block_diag(dU_Th_dU_Th, format='csc')
-        # partials['dU_Th_dt']['SoC'] = sp.block_diag(dU_Th_dSoC, format='csc')
-
-        # partials['dT_cell_dt']['T_cell'] = sp.block_diag(dT_cell_dT_cell,
-        #                                                  format='csc')
-        # partials['dT_cell_dt']['SoC'] = sp.block_diag(dT_cell_dSoC,
-        #                                               format='csc')
-        # partials['dT_cell_dt']['U_Th'] = sp.block_diag(dT_cell_dU_Th,
-        #    format='csc')
 
         # The structure of partials has the following for n = self.num_nodes =  4:
         # d(dy_dt)/dy =
@@ -313,8 +302,7 @@ class ODESystemNative(NativeSystem):
 
     def _OCV(self, SoC, T_cell):
         '''compute ocv and d_ocv_dsoc, and d_ocv_dT_cell (f1)'''
-        U_OC, dU_OC_dT_cell_diag, dU_OC_dSoc_diag = self._predict_eve(
-            tU_oc, T_cell, SoC, order=4, num_ctrl_pts=4)
+        U_OC, dU_OC_dT_cell_diag, dU_OC_dSoc_diag = self._predict_eve(self.sm_OCV,T_cell, SoC)
         # print('T_cell',T_cell.shape)
         # print('dU_OC_dT_cell_diag',dU_OC_dT_cell_diag.shape)
         # print('dU_OC_dSoc_diag',dU_OC_dSoc_diag.shape)
@@ -323,11 +311,7 @@ class ODESystemNative(NativeSystem):
     def _InternalResistance(self, SoC, T_cell):
         '''compute R_0 and d_ocv_dsoc, and dR0_dT (f2) SoC'''
 
-        R_0, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eve(tR_0,
-                                                           T_cell,
-                                                           SoC,
-                                                           order=3,
-                                                           num_ctrl_pts=4)
+        R_0, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eve(self.sm_InternalResistance,T_cell, SoC)
 
         return R_0, dR_Th_dSOC, dR_Th_dT_cell
 
@@ -347,13 +331,7 @@ class ODESystemNative(NativeSystem):
         # print('SoC---------------', SoC)
         # print('exp---------------', np.exp(-120 * SoC))
 
-        R_Th, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eve(
-            tR_Th,
-            T_cell,
-            SoC,
-            order=3,
-            num_ctrl_pts=5,
-            regularization_weight=5e-6)
+        R_Th, dR_Th_dT_cell, dR_Th_dSOC = self._predict_eve(self.sm_PolarizationResistance,T_cell, SoC)
 
         return R_Th, dR_Th_dSOC, dR_Th_dT_cell
 
@@ -401,28 +379,11 @@ class ODESystemNative(NativeSystem):
         # print("R_0", R_0)
         # print("P_batt_i", P_batt_i)
         # return I_L_minus
-
-    def _predict_eve(self,
-                     y,
-                     xt_eve,
-                     xs_eve,
-                     order,
-                     num_ctrl_pts,
-                     regularization_weight=1e-6):
-        '''
-        training set inputs (T; SoC) are automatically loaded from the x-57 paper
-        y: training set outputs
-        xt_eve: evaluation set for temperature
-        xs_eve: evaluation set for soc
-        '''
-        # x_T = np.tile(T_bp, SOC_bp.shape[1]).reshape(-1, 4).T.flatten()
-        # x_S0C = SOC_bp.T.flatten()
+    def _pretrain(self,y,order,num_ctrl_pts,regularization_weight=1e-6):
         x_T = T_bp
-        x_S0C = SOC_bp
-        # print('x_T', x_T.shape)
-        # print('x_S0C', x_S0C.shape)
+        x_S0C = SOC_bp  
         x = np.concatenate((x_T, x_S0C)).reshape(-1, 2, order='F')
-        xlimits = np.array([[-300, 300.0], [-10., 10.000000001]])
+        xlimits = np.array([[-300, 300.0], [-10., 10.000000001]])      
         sm = RMTB(
             xlimits=xlimits,
             order=order,
@@ -431,10 +392,17 @@ class ODESystemNative(NativeSystem):
             regularization_weight=regularization_weight,
             print_global=False,
         )
-        # print('x', x.shape)
-        # print('y', y.shape)
         sm.set_training_values(x, y.flatten())
         sm.train()
+        return sm
+
+    def _predict_eve(self, sm, xt_eve, xs_eve,):
+        '''
+        training set inputs (T; SoC) are automatically loaded from the x-57 paper
+        y: training set outputs
+        xt_eve: evaluation set for temperature
+        xs_eve: evaluation set for soc
+        '''
 
         if xs_eve.size != 1:
             x_eve = np.concatenate((xt_eve, xs_eve)).reshape(-1, 2, order='F')
