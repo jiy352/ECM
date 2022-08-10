@@ -15,12 +15,20 @@ t_landing = 70
 t_cruise_res = 20 * 60
 
 # 2. load aircraft power profile (kW)
+# P_taxi = 46.8
+# p_takeoff = 829.2
+# P_climb = 524.1
+# P_cruise = 282.0
+# P_landing = 829.2
+# P_cruise_res = 282.0
+
 P_taxi = 46.8
-p_takeoff = 829.2/2
+p_takeoff = 829.2
 P_climb = 524.1
 P_cruise = 282.0
-P_landing = 829.2/2
+P_landing = 829.2
 P_cruise_res = 282.0
+
 p_list = [P_taxi, p_takeoff, P_climb, P_cruise, P_landing, P_cruise_res]
 
 # 3. setup delat_t, and define each process in the discretized time step
@@ -34,22 +42,21 @@ t_list = [t_taxi, t_takeoff, t_climb, t_cruise, t_landing, t_cruise_res]
 # time = np.arange(0,
 #                  round(t_total / delta_t + 1) * (delta_t),
 #                  delta_t)  # shape=258
+n_s = 200
 
-n_s = 190
 # assuming 21700 16150
 n_p = int(16150 / n_s)
 t_end=2600
 num_cells = 1
 
-num_times = 200
+num_times = 20
 num_segments=6
-n_s = 190
 
 model_1 = csdl.Model()
 input_power = model_1.create_input(name='input_power',
                     val=np.array(p_list).reshape(num_segments, 1))
 input_time  =model_1.create_input(name='input_time',val=np.array(t_list).reshape(num_segments, 1))
-n_parallel  =model_1.create_input(name='n_parallel',val=np.ones(1)*200)
+n_parallel  =model_1.create_input(name='n_parallel',val=np.ones(1)*80)
 
 submodel = RunModel(t_end=t_end,num_times=num_times, num_cells=num_cells,num_segments=num_segments,n_s=n_s)
 model_1.add(submodel, 'ECMPreprocessingModel')#,mode='rev')

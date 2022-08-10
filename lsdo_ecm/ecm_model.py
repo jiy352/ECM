@@ -5,6 +5,7 @@ import openmdao.api as om
 from ozone.api import ODEProblem, Wrap, NativeSystem
 # from lsdo_ecm.ecm_system import ODESystemNative
 from lsdo_ecm.ecm_system_pretrain import ODESystemNative
+# from lsdo_ecm.ecm_system_pretrain_ext import ODESystemNative
 import csdl
 import csdl_om
 import numpy as np
@@ -107,7 +108,7 @@ class RunModel(csdl.Model):
         # coeffs = self.create_input('coefficients',
         #                            np.ones(num_times) / (num_times))
         # Initial condition for state
-        self.create_input('SoC_0', np.ones(num_cells) * 1.0)
+        self.create_input('SoC_0', np.ones(num_cells) * 1.)
         self.create_input('U_Th_0', np.ones(num_cells) * 0.)
         self.create_input('T_cell_0', np.ones(num_cells) * 20.0)
 

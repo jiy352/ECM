@@ -1,3 +1,4 @@
+from turtle import title
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -64,7 +65,7 @@ tR_0_list = [[
          0.093583,0.092391,0.091804,0.091655,0.091524,0.091321,0.091294,
          0.091319,0.091289,0.091423,0.091448,0.091831,0.091877,0.092195,0.09259,
          0.092852,0.093221,0.093608,0.094041,0.094559,0.095306,0.095965,0.096635,
-         0.096996,0.097341,0.097681,0
+         0.096996,0.097341,0.097681,0.097681
      ],
      [
          0.10201,0.10054,0.099536,0.098821,0.098532,0.097949,0.097396,0.097345,
@@ -100,14 +101,14 @@ tU_oc_list = [[
          3.9371,3.9679,4.0063,4.0437,4.0699
      ]]
 
-
-tR_Th_list =     [[
+# 0.015715
+tR_Th_list=     [[
         0.012915,0.010688,0.012152,0.013488,0.01406,0.013933,0.013488,0.012788,
         0.011579,0.010561,0.0093524,0.0086526,0.0083345,0.0092888,0.011516,
         0.012724,0.013106,0.012533,0.01177,0.010816,0.009925,0.0081436,
     ],
      [
-         0.015715,0.0082709,0.0068712,0.0087798,0.0093524,0.010434,0.010752,
+         0.0082709,0.0082709,0.0068712,0.0087798,0.0093524,0.010434,0.010752,
          0.010434,0.0096069,0.0087798,0.0084617,0.0066803,0.0059805,0.0055987,
          0.0058532,0.0080164,0.0095433,0.010498,0.010434,0.010116,0.0096706,
          0.0094796,0.0090343,0.0085254,0.0075073,0.0061714,0.005217
@@ -141,7 +142,8 @@ for i in range(len(SOC_bp_list)):
     delta=len(SOC_bp_list[i])
     SOC_bp[start:start+delta] = np.array(SOC_bp_list[i])
     tC_Th[start:start+delta] = np.array(tC_Th_list[i])
-    tR_0[start:start+delta] = np.array(tR_0_list[i])
+    # tR_0[start:start+delta] = np.array(tR_0_list[i])
+    tR_0[start:start+delta] = 0.025
     tR_Th[start:start+delta] = np.array(tR_Th_list[i])
     T_bp[start:start+delta] = T_bp_list[i]
     tU_oc[start:start+delta]= np.array(tU_oc_list[i])
@@ -382,3 +384,16 @@ for i in range(len(SOC_bp_list)):
 #          0.0049625, 0.0073801, 0.0079528, 0.0078255, 0.0083981, 0.0067439,
 #          0.0055987, 0.00808, 0.0034356, 0.0027357
 #      ]])
+
+# plt.figure(1)
+# plt.plot(np.array(SOC_bp_list[1]),np.array(c_th_t_20))
+# plt.title('c_th_t_20')
+# plt.figure(2)
+# plt.plot(np.array(SOC_bp_list[1]),np.array(R_th_t_20))
+# plt.title('R_th_t_20')
+# plt.figure(3)
+# plt.plot(np.array(SOC_bp_list[1]),np.array(R_0_t_20))
+# plt.title('R_0_t_20')
+# plt.figure(4)
+# plt.plot(np.array(SOC_bp_list[1]),np.array(U_OC_t_20))
+# plt.title('U_OC_t_20')

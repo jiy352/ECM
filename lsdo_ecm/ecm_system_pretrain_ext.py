@@ -81,7 +81,7 @@ class ODESystemNative(NativeSystem):
         n_s = self.parameters['n_s']
         n_p = n_parallel
         P_batt_i = power_profile / (n_s * n_p)*1000
-        print('n_s,n_p',n_s,n_p)
+        # print('n_s,n_p',n_s,n_p)
         # outputs['dSoC_dt'] = np.zeros((n, self.num_cells))
         # outputs['dU_Th_dt'] = np.zeros((n, self.num_cells))
         # outputs['dT_cell_dt'] = np.zeros((n, self.num_cells))
@@ -304,6 +304,8 @@ class ODESystemNative(NativeSystem):
     def _OCV(self, SoC, T_cell):
         '''compute ocv and d_ocv_dsoc, and d_ocv_dT_cell (f1)'''
         U_OC, dU_OC_dT_cell_diag, dU_OC_dSoc_diag = self._predict_eve(self.sm_OCV,T_cell, SoC)
+        print('SoC',SoC)
+        print('U_OC',U_OC)
         # print('T_cell',T_cell.shape)
         # print('dU_OC_dT_cell_diag',dU_OC_dT_cell_diag.shape)
         # print('dU_OC_dSoc_diag',dU_OC_dSoc_diag.shape)
@@ -361,9 +363,9 @@ class ODESystemNative(NativeSystem):
 
     def _I_L_minus(self, U_oc, U_Th, R_0, P_batt_i):
         if (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i > 0:
-            I_L_minus = ((U_oc - U_Th) - np.sqrt(
-                (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i)) / (2 * R_0)
-            # print('I_L_minus',I_L_minus)
+            I_L_minus = np.abs(((U_oc - U_Th) - np.sqrt(
+                (U_oc - U_Th)**2 - 4 * R_0 * P_batt_i)) / (2 * R_0))
+            print('I_L_minus',I_L_minus)
             # print('U_oc!!!!!!!!!!!!!!', U_oc)
             # print('U_Th!!!!!!!!!!!!!!', U_Th)
             # print('(U_oc - U_Th)**2!!!!!!!!!!!!!!', (U_oc - U_Th)**2)
@@ -372,13 +374,14 @@ class ODESystemNative(NativeSystem):
             # print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)            
         else:
             print('no solution!!!!!!!!!!!!!!')
-            print('U_oc!!!!!!!!!!!!!!', U_oc)
-            print('U_Th!!!!!!!!!!!!!!', U_Th)
-            print('(U_oc - U_Th)**2!!!!!!!!!!!!!!', (U_oc - U_Th)**2)
-            print('R_0!!!!!!!!!!!!!!', R_0)
-            print('P_batt_i!!!!!!!!!!!!!!', P_batt_i)
-            print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)
-            I_L_minus = ((U_oc - U_Th)) / (2 * R_0)
+            # print('U_oc!!!!!!!!!!!!!!', U_oc)
+            # print('U_Th!!!!!!!!!!!!!!', U_Th)
+            # print('(U_oc - U_Th)**2!!!!!!!!!!!!!!', (U_oc - U_Th)**2)
+            # print('R_0!!!!!!!!!!!!!!', R_0)
+            # print('P_batt_i!!!!!!!!!!!!!!', P_batt_i)
+            # print('4 * R_0 * P_batt_i !!!!!!!!!!!!!!', 4 * R_0 * P_batt_i)
+            I_L_minus = np.abs(((U_oc - U_Th)) / (2 * R_0))
+            print('I_L_minus',I_L_minus)
         return I_L_minus
 
         # print("I_L_minus", I_L_minus)
@@ -391,7 +394,8 @@ class ODESystemNative(NativeSystem):
         x_T = T_bp
         x_S0C = SOC_bp  
         x = np.concatenate((x_T, x_S0C)).reshape(-1, 2, order='F')
-        xlimits = np.array([[-10, 45.0], [-1., 1.5]])      
+        xlimits = np.array([[-1, 45.0], [-0.01, 1.01]])   
+        self.xlimits =xlimits    
         sm = RMTB(
             xlimits=xlimits,
             order=order,
@@ -411,17 +415,71 @@ class ODESystemNative(NativeSystem):
         xt_eve: evaluation set for temperature
         xs_eve: evaluation set for soc
         '''
-
         if xs_eve.size != 1:
             x_eve = np.concatenate((xt_eve, xs_eve)).reshape(-1, 2, order='F')
         else:
             x_eve = np.array([xt_eve, xs_eve]).reshape(-1, 2)
-        # print()
-        # print('x_eve', x_eve)
-        y_predict = sm.predict_values(x_eve)
+        lower_linear_msk, upper_linear_msk, interpolate_msk = self._get_mask_arrays(x_eve)
+        # print('lower_linear_msk','upper_linear_msk','interpolate_msk\n')
+        # print(lower_linear_msk, upper_linear_msk, interpolate_msk)
 
-        dy_dt = sm.predict_derivatives(x_eve, 0).flatten()
-        dy_dsoc = sm.predict_derivatives(x_eve, 1).flatten()
+        dy_dt_soc_u=0
+        dsoc_dt_soc_u=0
+        x_eval_lower = x_eve.copy()
+        x_eval_lower[:,0] = 20
+        x_eval_lower[:,1] = self.xlimits[1, 0] 
+
+        x_eval_upper= x_eve.copy()
+        x_eval_upper[:,0] = 20
+        x_eval_upper[:,1] = self.xlimits[1,1]
+
+        dy_dt_soc_l = sm.predict_derivatives(x_eval_lower, 0).flatten()
+        dsoc_dt_soc_l = sm.predict_derivatives(x_eval_lower, 1).flatten()* 1e-3
+        b_sol_l = sm.predict_values(x_eval_lower)-(dy_dt_soc_l*20 + dsoc_dt_soc_l*self.xlimits[1,0])
+
+
+        dy_dt_soc_u = np.copy(sm.predict_derivatives(x_eval_upper, 0).flatten())
+        dsoc_dt_soc_u = np.copy(sm.predict_derivatives(x_eval_upper, 1).flatten())
+        b_sol_u = sm.predict_values(x_eval_upper)-(dy_dt_soc_u*20 + dsoc_dt_soc_u*self.xlimits[1,1])
+
+        y_predict = sm.predict_values(x_eve)*interpolate_msk +\
+             dy_dt_soc_u*x_eve[:,0]*upper_linear_msk + dsoc_dt_soc_u*x_eve[:,1]*upper_linear_msk+\
+                dy_dt_soc_l*x_eve[:,0]*lower_linear_msk+ dsoc_dt_soc_l*x_eve[:,1]*lower_linear_msk+\
+                    b_sol_l*lower_linear_msk + b_sol_u*upper_linear_msk
+        # print(sm.predict_values(x_eve)*interpolate_msk)
+        # print(dy_dt_soc_u*x_eve[:,0]*upper_linear_msk + dsoc_dt_soc_u*x_eve[:,1]*upper_linear_msk)
+        print(dy_dt_soc_l, dsoc_dt_soc_l)
+        # print(dy_dt_soc_l*x_eve[:,0]*lower_linear_msk+ dsoc_dt_soc_l*x_eve[:,1]*lower_linear_msk)
+        print(b_sol_l*lower_linear_msk + b_sol_u*upper_linear_msk)
+
+        dy_dt = sm.predict_derivatives(x_eve, 0).flatten()*interpolate_msk + dy_dt_soc_u*upper_linear_msk +dy_dt_soc_l*lower_linear_msk
+        # print('dy_dt_soc_u_1',dy_dt_soc_u, type(dy_dt_soc_u),dy_dt_soc_u.dtype)
+
+        dy_dsoc = sm.predict_derivatives(x_eve, 1).flatten()*interpolate_msk  + dsoc_dt_soc_u*upper_linear_msk+dsoc_dt_soc_l*lower_linear_msk
+        #+ 1e-2
+
         # print('dy_dt', sm.predict_derivatives(x_eve, 0).shape, dy_dt.shape, dy_dt)
         # print('dy_dsoc', dy_dsoc.shape, dy_dsoc)
+        dy_dt_soc_u=0
+        dsoc_dt_soc_u=0
         return y_predict.flatten(), dy_dt.flatten(), dy_dsoc.flatten()
+
+
+    def _get_mask_arrays(self,x_eval):
+        '''
+        get mask arrays for l u and feasible regions
+        '''
+        x_lower = self.xlimits[1,0]
+        x_upper = self.xlimits[1,1]
+        # print('x_lower',x_lower)
+        # print('x_upper',x_upper)
+        # print('x_eval',x_eval)
+
+        lower_linear_msk = ((x_eval[:,1]) <= x_lower)
+        upper_linear_msk = (x_eval[:,1] > x_upper)
+        interpolate_msk = np.logical_and(~lower_linear_msk, ~upper_linear_msk)
+
+        # print('lower_linear_msk',lower_linear_msk)
+        # print('upper_linear_msk',upper_linear_msk)
+        # print('interpolate_msk_',interpolate_msk)
+        return lower_linear_msk, upper_linear_msk, interpolate_msk
